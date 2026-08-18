@@ -5,8 +5,13 @@ on:
   push:
     tags:
       - "v*"
-  # Lets you also trigger it manually from the "Actions" tab on GitHub, no tag needed
+  # Lets you also trigger it manually from the "Actions" tab on GitHub
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. v1.1.0)"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -31,5 +36,7 @@ jobs:
       - name: Create GitHub Release with the zip attached
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
           files: tabpulse-v${{ steps.version.outputs.version }}.zip
           generate_release_notes: true
