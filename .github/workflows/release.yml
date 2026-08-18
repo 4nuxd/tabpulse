@@ -1,0 +1,35 @@
+name: Package Extension
+
+# Runs automatically whenever you push a version tag like v1.0, v1.1, v2.0 ...
+on:
+  push:
+    tags:
+      - "v*"
+  # Lets you also trigger it manually from the "Actions" tab on GitHub, no tag needed
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Read version from manifest.json
+        id: version
+        run: |
+          VERSION=$(node -p "require('./manifest.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Zip the extension
+        run: |
+          zip -r tabpulse-v${{ steps.version.outputs.version }}.zip . -x ".git/*" -x ".github/*" -x "*.DS_Store"
+
+      - name: Create GitHub Release with the zip attached
+        uses: softprops/action-gh-release@v2
+        with:
+          files: tabpulse-v${{ steps.version.outputs.version }}.zip
+          generate_release_notes: true
