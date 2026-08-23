@@ -1,5 +1,11 @@
 "use strict";
 
+const ext = globalThis.extensionApi || globalThis.browser || globalThis.chrome;
+if (!ext) {
+  throw new Error("TabPulse could not find a compatible extension API.");
+}
+
+
 const tabListEl = document.getElementById("tabList");
 const intervalEl = document.getElementById("interval");
 const saveBtn = document.getElementById("saveBtn");
@@ -78,7 +84,7 @@ function clampInterval(value) {
 async function init() {
   let stored;
   try {
-    stored = await chrome.storage.local.get(["watchedTabIds", "intervalMinutes"]);
+    stored = await ext.storage.local.get(["watchedTabIds", "intervalMinutes"]);
   } catch (e) {
     stored = {};
   }
@@ -89,7 +95,7 @@ async function init() {
   intervalEl.value = intervalMinutes;
 
   try {
-    allTabs = await chrome.tabs.query({});
+    allTabs = await ext.tabs.query({});
   } catch (e) {
     allTabs = [];
   }
@@ -203,14 +209,14 @@ saveBtn.addEventListener("click", async () => {
   const minutes = clampInterval(intervalEl.value);
 
   try {
-    await chrome.storage.local.set({
+    await ext.storage.local.set({
       watchedTabIds: selectedIds,
       intervalMinutes: minutes,
     });
 
     let confirmed = false;
     try {
-      const response = await chrome.runtime.sendMessage({ type: "RESCHEDULE" });
+      const response = await ext.runtime.sendMessage({ type: "RESCHEDULE" });
       confirmed = !!(response && response.ok);
     } catch (e) {
       // Background may still be waking up - settings are already saved in

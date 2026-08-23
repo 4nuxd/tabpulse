@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "TabPulse",
+  "version": "1.1",
+  "description": "TabPulse keeps your selected tabs alive by auto-refreshing them on a timer, so you never get logged out.",
+  "permissions": ["tabs", "storage", "alarms"],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; base-uri 'self';"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "media/icons/icon16.png",
+      "48": "media/icons/icon48.png",
+      "128": "media/icons/icon128.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "icons": {
+    "16": "media/icons/icon16.png",
+    "48": "media/icons/icon48.png",
+    "128": "media/icons/icon128.png"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "tabpulse@4nuxd.dev"
+    }
+  }
+}
