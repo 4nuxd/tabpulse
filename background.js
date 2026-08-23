@@ -1,5 +1,17 @@
 "use strict";
 
+try {
+  importScripts("extension-api.js");
+} catch (e) {
+  // ignore: fallback to global browser/chrome lookup below
+}
+
+const ext = globalThis.extensionApi || globalThis.browser || globalThis.chrome;
+if (!ext) {
+  throw new Error("TabPulse could not find a compatible extension API.");
+}
+
+
 const ALARM_NAME = "tabpulseRefreshAlarm";
 const HEALTH_ALARM_NAME = "tabpulseHealthCheck";
 const HEALTH_CHECK_PERIOD_MINUTES = 5; // periodically verify the main alarm is still correctly scheduled
@@ -21,7 +33,7 @@ function wait(ms) {
 
 async function getStoredIntervalMinutes() {
   try {
-    const stored = await chrome.storage.local.get("intervalMinutes");
+    const stored = await ext.storage.local.get("intervalMinutes");
     return clampInterval(stored.intervalMinutes);
   } catch (e) {
     return 15;
@@ -38,14 +50,14 @@ async function scheduleAlarm() {
   const intervalMinutes = await getStoredIntervalMinutes();
 
   try {
-    await chrome.alarms.clear(ALARM_NAME);
-    await chrome.alarms.create(ALARM_NAME, { periodInMinutes: intervalMinutes });
+    await ext.alarms.clear(ALARM_NAME);
+    await ext.alarms.create(ALARM_NAME, { periodInMinutes: intervalMinutes });
 
-    const created = await chrome.alarms.get(ALARM_NAME);
+    const created = await ext.alarms.get(ALARM_NAME);
     const ok = created && Math.round(created.periodInMinutes) === intervalMinutes;
     if (!ok) {
       // Retry once - covers rare transient failures right after install/update
-      await chrome.alarms.create(ALARM_NAME, { periodInMinutes: intervalMinutes });
+      await ext.alarms.create(ALARM_NAME, { periodInMinutes: intervalMinutes });
     }
     return true;
   } catch (e) {
@@ -62,11 +74,11 @@ async function scheduleAlarm() {
 async function verifyAlarmHealth() {
   try {
     const [alarm, intervalMinutes] = await Promise.all([
-      chrome.alarms.get(ALARM_NAME),
+      ext.alarms.get(ALARM_NAME),
       getStoredIntervalMinutes(),
     ]);
 
-    const stored = await chrome.storage.local.get("watchedTabIds");
+    const stored = await ext.storage.local.get("watchedTabIds");
     const watchedTabIds = Array.isArray(stored.watchedTabIds) ? stored.watchedTabIds : [];
     if (watchedTabIds.length === 0) return; // nothing to watch, nothing to heal
 
@@ -81,9 +93,9 @@ async function verifyAlarmHealth() {
 
 async function ensureHealthCheckAlarm() {
   try {
-    const existing = await chrome.alarms.get(HEALTH_ALARM_NAME);
+    const existing = await ext.alarms.get(HEALTH_ALARM_NAME);
     if (!existing) {
-      await chrome.alarms.create(HEALTH_ALARM_NAME, { periodInMinutes: HEALTH_CHECK_PERIOD_MINUTES });
+      await ext.alarms.create(HEALTH_ALARM_NAME, { periodInMinutes: HEALTH_CHECK_PERIOD_MINUTES });
     }
   } catch (e) {
     // Non-fatal - health checks are a bonus, not a requirement
@@ -98,9 +110,9 @@ async function ensureHealthCheckAlarm() {
 async function reloadTabWithRetry(tabId) {
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const tab = await chrome.tabs.get(tabId);
+      const tab = await ext.tabs.get(tabId);
       if (!tab || typeof tab.id !== "number") return false;
-      await chrome.tabs.reload(tabId);
+      await ext.tabs.reload(tabId);
       return true;
     } catch (e) {
       if (attempt === 0) {
@@ -120,7 +132,7 @@ async function refreshWatchedTabs() {
   try {
     let watchedTabIds = [];
     try {
-      const stored = await chrome.storage.local.get("watchedTabIds");
+      const stored = await ext.storage.local.get("watchedTabIds");
       watchedTabIds = Array.isArray(stored.watchedTabIds) ? stored.watchedTabIds : [];
     } catch (e) {
       return;
@@ -143,7 +155,7 @@ async function refreshWatchedTabs() {
     if (staleIds.length > 0) {
       try {
         const stillWatched = validIds.filter((id) => !staleIds.includes(id));
-        await chrome.storage.local.set({ watchedTabIds: stillWatched });
+        await ext.storage.local.set({ watchedTabIds: stillWatched });
       } catch (e) {
         // Non-fatal; next refresh cycle will just re-attempt the stale ids
       }
@@ -153,58 +165,76 @@ async function refreshWatchedTabs() {
   }
 }
 
-chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === ALARM_NAME) {
-    refreshWatchedTabs();
-  } else if (alarm.name === HEALTH_ALARM_NAME) {
-    verifyAlarmHealth();
-  }
-});
+if (ext.alarms && ext.alarms.onAlarm && ext.alarms.onAlarm.addListener) {
+  ext.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name === ALARM_NAME) {
+      refreshWatchedTabs();
+    } else if (alarm.name === HEALTH_ALARM_NAME) {
+      verifyAlarmHealth();
+    }
+  });
+}
 
 // Instantly drop a tab from the watch list the moment it's closed, rather
 // than waiting for the next scheduled refresh to discover it's gone.
-chrome.tabs.onRemoved.addListener((tabId) => {
-  chrome.storage.local.get("watchedTabIds").then(({ watchedTabIds }) => {
-    if (!Array.isArray(watchedTabIds) || !watchedTabIds.includes(tabId)) return;
-    const next = watchedTabIds.filter((id) => id !== tabId);
-    chrome.storage.local.set({ watchedTabIds: next }).catch(() => {});
-  }).catch(() => {});
-});
+if (ext.tabs && ext.tabs.onRemoved && ext.tabs.onRemoved.addListener) {
+  ext.tabs.onRemoved.addListener((tabId) => {
+    ext.storage.local.get("watchedTabIds").then(({ watchedTabIds }) => {
+      if (!Array.isArray(watchedTabIds) || !watchedTabIds.includes(tabId)) return;
+      const next = watchedTabIds.filter((id) => id !== tabId);
+      ext.storage.local.set({ watchedTabIds: next }).catch(() => {});
+    }).catch(() => {});
+  });
+}
 
 // React automatically to any change in settings - whether it came from this
 // popup, a different window's popup, or a synced/external write to storage -
 // instead of relying solely on the RESCHEDULE message from the popup.
-chrome.storage.onChanged.addListener((changes, areaName) => {
-  if (areaName !== "local") return;
-  if (changes.intervalMinutes) {
+if (ext.storage && ext.storage.onChanged && ext.storage.onChanged.addListener) {
+  ext.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName !== "local") return;
+    if (changes.intervalMinutes) {
+      scheduleAlarm();
+    }
+  });
+}
+
+if (ext.runtime && ext.runtime.onInstalled && ext.runtime.onInstalled.addListener) {
+  ext.runtime.onInstalled.addListener(() => {
     scheduleAlarm();
-  }
-});
+    ensureHealthCheckAlarm();
+  });
+}
 
-chrome.runtime.onInstalled.addListener(() => {
-  scheduleAlarm();
-  ensureHealthCheckAlarm();
-});
-
-chrome.runtime.onStartup.addListener(() => {
-  scheduleAlarm();
-  ensureHealthCheckAlarm();
-});
+if (ext.runtime && ext.runtime.onStartup && ext.runtime.onStartup.addListener) {
+  ext.runtime.onStartup.addListener(() => {
+    scheduleAlarm();
+    ensureHealthCheckAlarm();
+  });
+}
 
 // Only react to our own extension's runtime messages with the exact expected shape.
 // Responds with { ok: true/false } so the popup can confirm the alarm was
 // actually (re)scheduled rather than assuming success.
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (
-    sender.id === chrome.runtime.id &&
-    message &&
-    typeof message === "object" &&
-    message.type === "RESCHEDULE"
-  ) {
-    scheduleAlarm()
-      .then((ok) => sendResponse({ ok }))
-      .catch(() => sendResponse({ ok: false }));
-    return true; // keep the message channel open for the async response
-  }
-  return false;
-});
+if (ext.runtime && ext.runtime.onMessage && ext.runtime.onMessage.addListener) {
+  ext.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    const fromThisExtension = !sender || !sender.id || (ext.runtime && sender.id === ext.runtime.id);
+    if (
+      fromThisExtension &&
+      message &&
+      typeof message === "object" &&
+      message.type === "RESCHEDULE"
+    ) {
+      scheduleAlarm()
+        .then((ok) => sendResponse({ ok }))
+        .catch(() => sendResponse({ ok: false }));
+      return true; // keep the message channel open for the async response
+    }
+    return false;
+  });
+}
+
+
+// Re-hydrate alarms when the service worker starts up in any browser.
+void scheduleAlarm();
+void ensureHealthCheckAlarm();

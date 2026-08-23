@@ -6,13 +6,14 @@
 
 ### Keep Your Tabs Alive. Never Get Logged Out Again.
 
-A minimal, glassmorphic Chrome extension that auto-refreshes the tabs you choose, on the schedule you set.
+A minimal, glassmorphic browser extension that auto-refreshes the tabs you choose, on the schedule you set.
 
 </div>
 
 <p align="center">
   <img src="https://img.shields.io/badge/MANIFEST-V3-000000?style=for-the-badge&labelColor=1a1a1a" alt="Manifest V3">
-  <img src="https://img.shields.io/badge/CHROME-EXTENSION-4285F4?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Chrome Extension">
+  <img src="https://img.shields.io/badge/CHROME%20%2F%20EDGE-MV3%20Extension-4285F4?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Chrome and Edge Extension">
+  <img src="https://img.shields.io/badge/FIREFOX-MV3%20Variant-FF7139?style=for-the-badge&logo=firefoxbrowser&logoColor=white" alt="Firefox Variant">
   <img src="https://img.shields.io/badge/VANILLA-JS-F7DF1E?style=for-the-badge&logo=javascript&logoColor=black" alt="Vanilla JS">
   <img src="https://img.shields.io/badge/DEPENDENCIES-NONE-2ea44f?style=for-the-badge" alt="No dependencies">
   <img src="https://img.shields.io/badge/LICENSE-MIT-black?style=for-the-badge" alt="MIT License">
@@ -32,7 +33,7 @@ Long-lived dashboards, monitoring tools, admin panels, and internal tools often 
 - ⏱ **Custom refresh interval**: any window from 1 minute up to 24 hours, adjustable with a live stepper.
 - 🖤 **Black / white / grey glassmorphic UI**: fully custom checkboxes, stepper, and button, no default browser form styling anywhere.
 - 🔔 **Self-dismissing toast**: a floating glass confirmation appears on save and fades out after 5 seconds on its own.
-- ⚙️ **Self-healing alarm scheduler**: a background watchdog checks every 5 minutes that the refresh timer is still correctly set, and repairs it automatically if Chrome ever drops it.
+- ⚙️ **Self-healing alarm scheduler**: a background watchdog checks every 5 minutes that the refresh timer is still correctly set, and repairs it automatically if a browser drops it.
 - 🧹 **Self-cleaning watch list**: closed tabs are pruned instantly, not just on the next scheduled cycle.
 - ⚡ **Concurrent, retrying refresh**: all watched tabs reload in parallel, each with a retry, so one slow tab never blocks the rest.
 - 🔒 **Privacy-first**: no network requests, no analytics, no remote code. Everything stays in local browser storage.
@@ -40,41 +41,56 @@ Long-lived dashboards, monitoring tools, admin panels, and internal tools often 
 
 ---
 
+## 🌐 Browser Support Matrix
+
+| Browser | Status | Notes |
+|---|---|---|
+| Chrome (Chromium) | ✅ Supported | Uses `manifest.json` |
+| Edge (Chromium) | ✅ Supported | Uses `manifest.json` |
+| Firefox | ✅ Supported | Uses `manifest.firefox.json` (`browser_specific_settings.gecko.id`) |
+| Brave / Arc / Vivaldi / Opera | ✅ Usually supported | Chromium-based; use Chrome build |
+| DuckDuckGo Browser and browsers with restricted extension APIs | ⚠️ Limited / not guaranteed | Some platforms do not expose full MV3 APIs (`alarms`, background worker lifecycle) needed by TabPulse |
+
 ## 📥 Install
 
-No Chrome Web Store listing yet, so load it as an unpacked extension:
+No store listing yet, so load it as an unpacked extension:
 
-1. Download and unzip the extension folder somewhere permanent (Chrome loads it live from this folder, so don't delete it after installing).
-2. Open `chrome://extensions` in your browser.
-3. Turn on **Developer mode** (top right toggle).
-4. Click **Load unpacked** and select the extension folder.
-5. Click the TabPulse icon in your toolbar, select the tabs you want to keep alive, set your interval, and hit **Save & Start**.
+#### Chrome / Edge / Chromium browsers
+1. Download and unzip the extension folder somewhere permanent.
+2. Open `chrome://extensions` (or `edge://extensions`).
+3. Turn on **Developer mode**.
+4. Click **Load unpacked** and select the project folder, or `dist/chrome` / `dist/edge` after running the build script.
 
-Works in any Chromium based browser: Chrome, Edge, Brave, Arc, Vivaldi.
+#### Firefox
+1. Build the Firefox variant (commands below).
+2. Open `about:debugging#/runtime/this-firefox`.
+3. Click **Load Temporary Add-on...** and select `dist/firefox/manifest.json`.
+
+Then click the TabPulse icon, select tabs, set interval, and hit **Save & Start**.
 
 ---
 
 ## 🧠 How It Works
 
-TabPulse uses Chrome's [`alarms`](https://developer.chrome.com/docs/extensions/reference/api/alarms) API to schedule a periodic wake up in the background service worker. On each tick, it reloads only the tab IDs you saved via [`chrome.storage.local`](https://developer.chrome.com/docs/extensions/reference/api/storage). Nothing else on your machine or browser is touched.
+TabPulse uses the extension [`alarms`](https://developer.chrome.com/docs/extensions/reference/api/alarms) API to schedule a periodic wake up in the background service worker. On each tick, it reloads only the tab IDs you saved via extension local storage. Runtime code uses a tiny `browser`/`chrome` compatibility wrapper (`extension-api.js`) so the same logic works across Chromium browsers and Firefox.
 
 ```
 Popup (pick tabs + interval)
         │
         ▼
-chrome.storage.local  ───►  background.js (service worker)
+storage.local         ───►  background.js (service worker)
                                     │
                                     ▼
-                          chrome.alarms (every N min)
+                                 alarms (every N min)
                                     │
                                     ▼
-                        chrome.tabs.reload(watchedTabId)
+                           tabs.reload(watchedTabId)
                                     │
                                     ▼
                      tabpulseHealthCheck (self-heal, every 5 min)
 ```
 
-The **"Inactive"** label you'll see next to the service worker in `chrome://extensions` is completely normal. Chrome suspends the worker's JS process after idle time to save memory, but `chrome.alarms` runs at the browser level and wakes the worker back up exactly when your refresh is due.
+The **"Inactive"** label you'll see next to the service worker in Chromium extension pages (like `chrome://extensions` or `edge://extensions`) is completely normal. Browsers suspend the worker's JS process after idle time to save memory, but the alarms scheduler wakes the worker back up exactly when your refresh is due.
 
 ---
 
@@ -82,14 +98,14 @@ The **"Inactive"** label you'll see next to the service worker in `chrome://exte
 
 | Layer | Tech |
 |---|---|
-| Extension platform | Chrome Extension **Manifest V3** |
+| Extension platform | Browser Extension **Manifest V3** (`manifest.json` + Firefox variant) |
 | UI | Vanilla HTML + CSS (glassmorphism via `backdrop-filter`, layered gradients, custom controls) |
 | Logic | Vanilla JavaScript, no frameworks, no bundler |
-| Persistence | `chrome.storage.local` |
-| Scheduling | `chrome.alarms` with a self-healing watchdog alarm |
+| Persistence | `storage.local` (via cross-browser wrapper) |
+| Scheduling | `alarms` with a self-healing watchdog alarm |
 | Icons | Generated with Python and Pillow |
 
-No npm, no build pipeline, no external libraries. The entire extension is hand-written and inspectable in plain text.
+No npm dependencies and no bundler. Packaging is done with lightweight shell scripts in `scripts/`.
 
 ---
 
@@ -97,10 +113,15 @@ No npm, no build pipeline, no external libraries. The entire extension is hand-w
 
 ```
 tabpulse/
-├── manifest.json          Extension config (MV3, permissions, CSP)
-├── background.js          Service worker: alarm scheduling + tab refresh logic
-├── popup.html              Popup UI (glassmorphic, custom controls)
-├── popup.js                Popup logic: tab listing, selection, validation
+├── manifest.json               Chromium/Chrome/Edge extension config
+├── manifest.firefox.json       Firefox variant with gecko settings
+├── extension-api.js            `browser`/`chrome` compatibility wrapper
+├── background.js               Service worker: alarm scheduling + tab refresh logic
+├── popup.html                  Popup UI (glassmorphic, custom controls)
+├── popup.js                    Popup logic: tab listing, selection, validation
+├── scripts/
+│   ├── build-extension.sh      Build target folder (chrome|edge|firefox)
+│   └── package-extension.sh    Build + zip distributable target
 ├── media/
 │   └── icons/
 │       ├── icon16.png
@@ -109,6 +130,27 @@ tabpulse/
 ├── LICENSE
 └── README.md
 ```
+
+
+---
+
+## 📦 Build & Package Targets
+
+```bash
+# Build unpacked folders
+./scripts/build-extension.sh chrome
+./scripts/build-extension.sh edge
+./scripts/build-extension.sh firefox
+
+# Build and zip distributables
+./scripts/package-extension.sh chrome
+./scripts/package-extension.sh edge
+./scripts/package-extension.sh firefox
+```
+
+Generated output:
+- `dist/chrome/`, `dist/edge/`, `dist/firefox/`
+- `dist/tabpulse-chrome.zip`, `dist/tabpulse-edge.zip`, `dist/tabpulse-firefox.zip`
 
 ---
 
