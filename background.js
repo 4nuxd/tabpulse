@@ -61,6 +61,13 @@ async function scheduleAlarm() {
     }
     return true;
   } catch (e) {
+    // Log an error to aid debugging when alarms fail to schedule in a
+    // particular browser/runtime (e.g. Firefox MV3 differences).
+    try {
+      console.error("TabPulse: scheduleAlarm failed", { intervalMinutes, error: e });
+    } catch (logErr) {
+      // swallow logging errors in extremely constrained runtimes
+    }
     return false;
   }
 }
@@ -88,6 +95,11 @@ async function verifyAlarmHealth() {
     }
   } catch (e) {
     // Best-effort watchdog - never let this throw into the alarm listener
+    try {
+      console.error("TabPulse: verifyAlarmHealth error", e);
+    } catch (logErr) {
+      // ignore
+    }
   }
 }
 
@@ -99,6 +111,11 @@ async function ensureHealthCheckAlarm() {
     }
   } catch (e) {
     // Non-fatal - health checks are a bonus, not a requirement
+    try {
+      console.error("TabPulse: ensureHealthCheckAlarm error", e);
+    } catch (logErr) {
+      // ignore
+    }
   }
 }
 
@@ -118,6 +135,12 @@ async function reloadTabWithRetry(tabId) {
       if (attempt === 0) {
         await wait(RELOAD_RETRY_DELAY_MS);
         continue;
+      }
+      // final failure: log once to aid debugging which tab failed
+      try {
+        console.warn("TabPulse: reloadTabWithRetry final failure", { tabId, error: e });
+      } catch (logErr) {
+        // ignore logging errors
       }
       return false; // tab is genuinely gone (or permanently inaccessible)
     }
