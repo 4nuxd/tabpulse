@@ -34,14 +34,24 @@ jobs:
             git push origin "$TAG"
           fi
 
-      - name: Build release archive
+      - name: Build browser packages
         run: |
-          zip -r "tabpulse-v${{ steps.version.outputs.version }}.zip" . -x ".git/*" -x ".github/*" -x "*.DS_Store"
+          ./scripts/package-extension.sh chrome
+          ./scripts/package-extension.sh edge
+          ./scripts/package-extension.sh firefox
+          ./scripts/validate-firefox-package.sh
+
+          mv "dist/tabpulse-chrome.zip" "tabpulse-v${{ steps.version.outputs.version }}-chrome.zip"
+          mv "dist/tabpulse-edge.zip" "tabpulse-v${{ steps.version.outputs.version }}-edge.zip"
+          mv "dist/tabpulse-firefox.zip" "tabpulse-v${{ steps.version.outputs.version }}-firefox.zip"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.version.outputs.version }}
           name: v${{ steps.version.outputs.version }}
-          files: tabpulse-v${{ steps.version.outputs.version }}.zip
+          files: |
+            tabpulse-v${{ steps.version.outputs.version }}-chrome.zip
+            tabpulse-v${{ steps.version.outputs.version }}-edge.zip
+            tabpulse-v${{ steps.version.outputs.version }}-firefox.zip
           generate_release_notes: true
